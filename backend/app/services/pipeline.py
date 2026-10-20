@@ -21,7 +21,7 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
 
     # If email source, supplement with email-specific parser if amount not already found
     order_id = None
-    if source == "email":
+    if source in ("email", "gmail"):
         from app.nlp.email_parser import parse_order_email
         email_info = parse_order_email(clean_text)
         if entities["amount"] is None and email_info.get("total_amount") is not None:
@@ -30,7 +30,7 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
 
     # Step 3: Normalize merchant
     merchant_candidate = entities.get("merchant_candidate")
-    if not merchant_candidate and source == "email":
+    if not merchant_candidate or merchant_candidate.lower() in ("unknown", "unknown merchant", "account", "card"):
         for key in normalizer.merchants:
             if key in clean_text.lower():
                 merchant_candidate = key
@@ -40,10 +40,22 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
 
     # Step 4: Categorize
     category, cat_conf = categorizer.predict(norm_merchant, clean_text)
-    overall_confidence = round((norm_conf + cat_conf) / 2.0, 2)
+    
+    # Field-level calibrated confidences
+    fc = entities.get("field_confidences", {})
+    conf_amt = fc.get("amount", 1.0 if entities.get("amount") is not None else 0.0)
+    conf_dir = fc.get("transaction_type", 1.0 if entities.get("transaction_type") in ["DEBIT", "CREDIT", "REFUND"] else 0.0)
+    conf_merch = norm_conf
+    conf_dt = fc.get("date", 1.0 if entities.get("transaction_date") is not None else 0.5)
+
+    # Calibrated composite confidence: ensures uncertain direction is not concealed by known amount
+    overall_confidence = round(
+        (0.35 * conf_amt) + (0.35 * conf_dir) + (0.20 * conf_merch) + (0.10 * conf_dt),
+        2
+    )
 
     # Step 5: Validate completeness and transaction direction
-    has_amount = entities["amount"] is not None
+    has_amount = entities["amount"] is not None and entities["amount"] > 0
     txn_type = entities["transaction_type"]
     missing_fields = []
 
@@ -52,7 +64,8 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
     if txn_type == "UNKNOWN":
         missing_fields.append("transaction_type")
 
-    is_complete = has_amount and (txn_type in ["DEBIT", "CREDIT"])
+    # Complete transactions require positive amount, confirmed direction (DEBIT, CREDIT, or REFUND), and non-zero direction confidence
+    is_complete = has_amount and (txn_type in ["DEBIT", "CREDIT", "REFUND"]) and (conf_dir >= 0.7)
     
     # Determine lifecycle status
     if txn_type == "FAILED":
@@ -63,10 +76,13 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
         status = "confirmed"
 
     # Step 6: Construct Transaction entity
+    # A completed refund or reversal represents a CREDIT to the receiving account balance
+    account_direction = "CREDIT" if txn_type == "REFUND" else txn_type
+
     tx_data = {
         "amount": entities["amount"],
         "currency": "INR",
-        "transaction_type": txn_type,
+        "transaction_type": account_direction,
         "merchant_raw": entities.get("merchant_candidate"),
         "merchant_normalized": norm_merchant,
         "category": category,
@@ -95,6 +111,7 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
             db_data = {k: v for k, v in tx_data.items() if k != "is_complete"}
             db_model = TransactionModel(
                 raw_text=clean_text,
+                source=source,
                 **db_data
             )
             db.add(db_model)
@@ -106,6 +123,9 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
         "anonymized_preview": clean_text[:40],
         "is_complete": is_complete,
         "status": status,
+        "event_type": txn_type,
+        "is_refund": (txn_type == "REFUND"),
+        "field_confidences": fc,
     }
     if missing_fields:
         metadata["missing_fields"] = missing_fields

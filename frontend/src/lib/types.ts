@@ -10,6 +10,9 @@ export interface Transaction {
   transaction_date?: string | null;
   raw_text?: string;
   is_complete?: boolean;
+  source?: string;
+  external_id?: string | null;
+  review_status?: string;
 }
 
 export interface RuleTraceItem {
@@ -30,4 +33,40 @@ export interface SummaryData {
   total_income: number;
   category_breakdown: Record<string, number>;
   transaction_count: number;
+}
+
+export interface ProviderStatus {
+  connected: boolean;
+  status: string;
+  last_synced_at?: string | null;
+  error_message?: string | null;
+}
+
+export interface SyncStatus {
+  gmail: ProviderStatus;
+  android: ProviderStatus;
+  review_queue_pending_count: number;
+}
+
+export interface ReviewItem {
+  id: number;
+  source: string;
+  external_id?: string | null;
+  raw_text: string;
+  suggested_amount?: number | null;
+  suggested_currency: string;
+  suggested_merchant?: string | null;
+  suggested_category?: string | null;
+  suggested_date?: string | null;
+  reason: string;
+  status: string;
+  created_at: string;
+}
+
+export interface BatchIngestResponse {
+  total_received: number;
+  inserted: number;
+  duplicates: number;
+  review_queue: number;
+  skipped: number;
 }

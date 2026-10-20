@@ -20,5 +20,5 @@ def get_db():
         db.close()
 
 def init_db():
-    from app.db import models
-    Base.metadata.create_all(bind=engine)
+    from app.db.migrations import run_migrations
+    run_migrations()

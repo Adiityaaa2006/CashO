@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import Tuple, Dict
 
 def levenshtein_distance(s1: str, s2: str) -> int:
@@ -48,14 +49,22 @@ class MerchantNormalizer:
         self.merchants = load_canonical_merchants(merchants_filepath)
 
     def normalize(self, raw_candidate: str) -> Tuple[str, float]:
-        """Normalize raw candidate string using dictionary lookup and edit distance."""
+        """Normalize raw candidate string using dictionary lookup, edit distance, and payee formatting."""
         if not raw_candidate:
             return "Unknown Merchant", 0.0
 
         clean = raw_candidate.lower().strip()
         
-        # Ignore common noise words that may have bypassed regex
-        if clean in ["to", "at", "in", "the", "on", "a", "an", "is", "via", "ref", "by", "vpa", "info"]:
+        # Clean out common noise prefixes/suffixes
+        for noise in ["order no", "order", "rrn", "ref", "please report", "if you", "help@", "support@"]:
+            if noise in clean:
+                clean = clean.replace(noise, "").strip()
+
+        clean = re.sub(r'\b(?:via|using|through|on\s+your|into\s+your)\b.*', '', clean).strip()
+        clean = re.sub(r'\s+', ' ', clean).strip()
+
+        # Ignore noise words
+        if clean in ["to", "at", "in", "the", "on", "a", "an", "is", "via", "ref", "by", "vpa", "info", "it", "you", "open it"]:
             return "Unknown Merchant", 0.0
 
         # 1. Exact dictionary match
@@ -63,18 +72,12 @@ class MerchantNormalizer:
             if key == clean:
                 return canonical, 1.0
 
-        # 2. Key contained in candidate (e.g., 'swiggy bangalore' contains 'swiggy')
+        # 2. Key contained in candidate (e.g., 'swiggy bangalore' contains 'swiggy', 'slice bank account' contains 'slice')
         for key, canonical in self.merchants.items():
-            if len(key) >= 3 and key in clean:
+            if len(key) >= 3 and (key in clean or clean in key):
                 return canonical, 0.95
 
-        # 3. Candidate is a significant prefix/substring of key (e.g., 'amaz' for 'amazon')
-        if len(clean) >= 4:
-            for key, canonical in self.merchants.items():
-                if clean in key:
-                    return canonical, 0.85
-
-        # 4. Fuzzy matching via Levenshtein with length-aware distance threshold
+        # 3. Fuzzy matching via Levenshtein with length-aware distance threshold
         if len(clean) >= 3:
             best_match = raw_candidate
             min_dist = 999
@@ -87,9 +90,15 @@ class MerchantNormalizer:
 
             max_allowed_dist = 1 if len(clean) <= 4 else 2
             if min_dist <= max_allowed_dist:
-                confidence = max(0.6, 1.0 - (min_dist * 0.2))
-                return best_match, confidence
+                confidence = max(0.65, 1.0 - (min_dist * 0.15))
+                return best_match, round(confidence, 2)
 
-        if len(clean) >= 2:
-            return raw_candidate.title(), 0.4
+        # 4. Valid individual payee / store name (title-cased)
+        if len(clean) >= 3:
+            # If candidate looks like a valid person name or merchant (contains letters, not just numbers/symbols)
+            clean_name = re.sub(r'[^A-Za-z0-9\s]', '', clean).strip()
+            clean_name = re.sub(r'\s+', ' ', clean_name).strip()
+            if len(clean_name) >= 3 and not clean_name.isdigit():
+                return clean_name.title(), 0.70
+
         return "Unknown Merchant", 0.0

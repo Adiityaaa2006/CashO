@@ -3,17 +3,18 @@ import Dashboard from './pages/Dashboard';
 import Upload from './pages/Upload';
 import Transactions from './pages/Transactions';
 import Insights from './pages/Insights';
+import Connections from './pages/Connections';
 import About from './pages/About';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'transactions' | 'insights' | 'about'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'transactions' | 'insights' | 'connections' | 'about'>('dashboard');
 
   return (
     <div style={{ fontFamily: 'Inter, system-ui, sans-serif', minHeight: '100vh', background: '#0f172a', color: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
       <header style={{ padding: '1.25rem 2rem', background: '#1e293b', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#38bdf8' }}>CashO 💸</h1>
-        <nav style={{ display: 'flex', gap: '0.75rem' }}>
-          {(['dashboard', 'upload', 'transactions', 'insights', 'about'] as const).map((tab) => (
+        <nav style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {(['dashboard', 'upload', 'transactions', 'insights', 'connections', 'about'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -28,7 +29,7 @@ export function App() {
                 textTransform: 'capitalize',
               }}
             >
-              {tab}
+              {tab === 'connections' ? 'Connections ⚡' : tab}
             </button>
           ))}
         </nav>
@@ -51,6 +52,11 @@ export function App() {
           />
         )}
         {activeTab === 'insights' && <Insights />}
+        {activeTab === 'connections' && (
+          <Connections
+            onRefreshTransactions={() => {}}
+          />
+        )}
         {activeTab === 'about' && <About />}
       </main>
     </div>
