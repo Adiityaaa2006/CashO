@@ -1,24 +1,41 @@
+# Real SMS/email data (CRITICAL - DO NOT COMMIT)
+backend/data/real/
+backend/data/raw/
+backend/data/labeled/*
+!backend/data/labeled/.gitkeep
+*.eml
+*.msg
+*.sms
+sms_dump*.json
+personal_data/
 
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Python cache files
+# Python
 __pycache__/
 *.py[cod]
+*.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+*.egg-info/
 
-# Environment variables and secrets
-.env
-.env.*
-
-# IDE settings
-.vscode/
-
-# Local databases
-*.db
+# Database
+*.sqlite
 *.sqlite3
+*.db
 
-# OS files
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+
+# Env & IDE
+.env
+.env.local
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db

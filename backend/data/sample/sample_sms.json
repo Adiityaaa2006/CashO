@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "text": "Your A/c XX8910 is debited by Rs. 450.00 on 12-Oct-2026 at Swiggy UPI:swiggy@icici. Avl Bal: Rs. 14,200.00",
+    "expected": {
+      "amount": 450.0,
+      "type": "DEBIT",
+      "merchant": "Swiggy",
+      "category": "Food & Dining"
+    }
+  },
+  {
+    "id": 2,
+    "text": "Rs. 1,299.00 debited from card ending 4402 on 14/10/2026 to Amazon India. Call 1800-XXX if not you.",
+    "expected": {
+      "amount": 1299.0,
+      "type": "DEBIT",
+      "merchant": "Amazon",
+      "category": "Shopping"
+    }
+  },
+  {
+    "id": 3,
+    "text": "Salary of Rs. 65,000.00 credited to Account ending 1234 on 01-Oct-2026 from TechCorp India Pvt Ltd.",
+    "expected": {
+      "amount": 65000.0,
+      "type": "CREDIT",
+      "merchant": "TechCorp",
+      "category": "Income"
+    }
+  },
+  {
+    "id": 4,
+    "text": "Sent Rs. 75.00 to Blinkit via UPI Ref: 3948192849 on 15-Oct-2026.",
+    "expected": {
+      "amount": 75.0,
+      "type": "DEBIT",
+      "merchant": "Blinkit",
+      "category": "Groceries"
+    }
+  }
+]
