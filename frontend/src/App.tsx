@@ -34,9 +34,22 @@ export function App() {
         </nav>
       </header>
       <main style={{ padding: '2rem', flex: 1, maxWidth: '1200px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'upload' && <Upload />}
-        {activeTab === 'transactions' && <Transactions />}
+        {activeTab === 'dashboard' && (
+          <Dashboard
+            onNavigateToUpload={() => setActiveTab('upload')}
+            onNavigateToTransactions={() => setActiveTab('transactions')}
+          />
+        )}
+        {activeTab === 'upload' && (
+          <Upload
+            onNavigateToTransactions={() => setActiveTab('transactions')}
+          />
+        )}
+        {activeTab === 'transactions' && (
+          <Transactions
+            onNavigateToUpload={() => setActiveTab('upload')}
+          />
+        )}
         {activeTab === 'insights' && <Insights />}
         {activeTab === 'about' && <About />}
       </main>

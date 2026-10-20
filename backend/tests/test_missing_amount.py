@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.nlp.extractor import extract_amount, extract_entities
 from app.services.pipeline import run_pipeline
-from app.db.database import Base
+from app.db.database import Base, get_db
 from app.db.models import TransactionModel
 from app.main import app
 
@@ -20,6 +20,20 @@ def db_session():
         yield session
     finally:
         session.close()
+
+@pytest.fixture
+def client(db_session):
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.pop(get_db, None)
 
 # Case 1: A normal SMS with an amount
 def test_normal_sms_with_amount():
@@ -97,8 +111,7 @@ def test_incomplete_transaction_pipeline_not_persisted(db_session):
     assert "INCOMPLETE_TRANSACTION" in rule_names
 
 # Case 7: API request/response involving a missing amount
-def test_api_parse_endpoint_missing_amount():
-    client = TestClient(app)
+def test_api_parse_endpoint_missing_amount(client, db_session):
     response = client.post("/api/parse", json={
         "text": "Your payment to Amazon was successful",
         "source": "sms"
@@ -111,3 +124,7 @@ def test_api_parse_endpoint_missing_amount():
     assert data["metadata"]["is_complete"] is False
     assert data["metadata"]["status"] == "incomplete"
     assert "amount" in data["metadata"]["missing_fields"]
+
+    # Verify that the missing-amount API request does not persist a transaction in the test database
+    persisted = db_session.query(TransactionModel).all()
+    assert len(persisted) == 0

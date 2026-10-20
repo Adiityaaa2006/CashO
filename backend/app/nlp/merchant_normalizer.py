@@ -54,23 +54,42 @@ class MerchantNormalizer:
 
         clean = raw_candidate.lower().strip()
         
-        # Exact match or substring match
+        # Ignore common noise words that may have bypassed regex
+        if clean in ["to", "at", "in", "the", "on", "a", "an", "is", "via", "ref", "by", "vpa", "info"]:
+            return "Unknown Merchant", 0.0
+
+        # 1. Exact dictionary match
         for key, canonical in self.merchants.items():
-            if key in clean or clean in key:
+            if key == clean:
+                return canonical, 1.0
+
+        # 2. Key contained in candidate (e.g., 'swiggy bangalore' contains 'swiggy')
+        for key, canonical in self.merchants.items():
+            if len(key) >= 3 and key in clean:
                 return canonical, 0.95
 
-        # Fuzzy matching via Levenshtein
-        best_match = raw_candidate
-        min_dist = 999
-        for key, canonical in self.merchants.items():
-            dist = levenshtein_distance(clean, key)
-            if dist < min_dist:
-                min_dist = dist
-                best_match = canonical
+        # 3. Candidate is a significant prefix/substring of key (e.g., 'amaz' for 'amazon')
+        if len(clean) >= 4:
+            for key, canonical in self.merchants.items():
+                if clean in key:
+                    return canonical, 0.85
 
-        # Distance thresholding
-        if min_dist <= 2:
-            confidence = max(0.5, 1.0 - (min_dist * 0.2))
-            return best_match, confidence
+        # 4. Fuzzy matching via Levenshtein with length-aware distance threshold
+        if len(clean) >= 3:
+            best_match = raw_candidate
+            min_dist = 999
+            for key, canonical in self.merchants.items():
+                if abs(len(clean) - len(key)) <= 2:
+                    dist = levenshtein_distance(clean, key)
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_match = canonical
 
-        return raw_candidate.title(), 0.4
+            max_allowed_dist = 1 if len(clean) <= 4 else 2
+            if min_dist <= max_allowed_dist:
+                confidence = max(0.6, 1.0 - (min_dist * 0.2))
+                return best_match, confidence
+
+        if len(clean) >= 2:
+            return raw_candidate.title(), 0.4
+        return "Unknown Merchant", 0.0

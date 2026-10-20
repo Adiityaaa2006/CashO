@@ -14,5 +14,5 @@ class TransactionModel(Base):
     merchant_normalized = Column(String, nullable=True)
     category = Column(String, default="Miscellaneous")
     confidence = Column(Float, default=0.0)
-    transaction_date = Column(DateTime, default=datetime.utcnow)
+    transaction_date = Column(DateTime, nullable=True, default=None)
     created_at = Column(DateTime, default=datetime.utcnow)

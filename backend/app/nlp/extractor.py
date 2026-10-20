@@ -17,38 +17,62 @@ def extract_amount(text: str) -> Optional[float]:
     return None
 
 def extract_transaction_type(text: str) -> str:
-    """Detect whether transaction is DEBIT or CREDIT."""
-    credit_keywords = ['credited', 'received', 'refund', 'deposited', 'salary']
-    debit_keywords = ['debited', 'spent', 'paid', 'withdrawn', 'purchase', 'sent']
-    
+    """Detect whether transaction is DEBIT, CREDIT, FAILED, or UNKNOWN."""
     text_lower = text.lower()
+    
+    # 1. Failed or declined payments
+    failed_keywords = ['failed', 'declined', 'unsuccessful', 'cancelled', 'rejected']
+    for kw in failed_keywords:
+        if kw in text_lower:
+            return "FAILED"
+
+    # 2. Refunds and reversals are credits back to account
+    refund_keywords = ['refund', 'reversed', 'reversal']
+    for kw in refund_keywords:
+        if kw in text_lower:
+            return "CREDIT"
+
+    # 3. Standard credit indicators
+    credit_keywords = ['credited', 'received', 'deposited', 'salary']
     for kw in credit_keywords:
         if kw in text_lower:
             return "CREDIT"
+
+    # 4. Standard debit indicators
+    debit_keywords = ['debited', 'spent', 'paid', 'withdrawn', 'purchase', 'sent']
     for kw in debit_keywords:
         if kw in text_lower:
             return "DEBIT"
-    return "DEBIT"
+
+    # 5. Ambiguous / unknown direction (never silently assume DEBIT)
+    return "UNKNOWN"
 
 def extract_merchant_candidate(text: str) -> Optional[str]:
     """Extract candidate merchant string using prepositions and patterns."""
     patterns = [
-        r'(?:at|to|vpa|info|trf to)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,2})',
-        r'paid to\s+([A-Za-z0-9&\.\-_@]+)',
+        r'(?:paid to|paid for)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,2})',
+        r'(?:at|vpa|info|trf to)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,2})',
+        r'(?:to|from)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,2})',
     ]
     for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
             candidate = match.group(1).strip()
             candidate = re.sub(r'[,\.]+$', '', candidate)
+            cand_lower = candidate.lower()
+            # Ignore account, card, or masked identifiers
+            if any(cand_lower.startswith(p) for p in ['a/c', 'acct', 'card', '[masked', 'account', 'your ']):
+                continue
+            if cand_lower in ['account', 'a/c', 'card', 'bank', 'avl']:
+                continue
             return candidate
     return None
 
 def extract_date(text: str) -> Optional[datetime]:
-    """Extract date if present, else fallback to current timestamp."""
+    """Extract date if present in text, else return None (never fabricate dates)."""
     date_patterns = [
         r'\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b',
         r'\b(\d{1,2}-(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-?\d{2,4})\b',
+        r'\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{2,4})\b',
     ]
     for pat in date_patterns:
         match = re.search(pat, text, re.IGNORECASE)
@@ -57,7 +81,7 @@ def extract_date(text: str) -> Optional[datetime]:
                 return date_parser.parse(match.group(1))
             except Exception:
                 pass
-    return datetime.utcnow()
+    return None
 
 def extract_entities(text: str) -> Dict[str, Any]:
     """Orchestrate extraction of amount, type, merchant candidate, and date."""

@@ -24,7 +24,7 @@ def parse_text(request: ParseRequest, db: Session = Depends(get_db)):
 def get_transactions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """Retrieve list of parsed transactions."""
     from app.db.models import TransactionModel
-    items = db.query(TransactionModel).offset(skip).limit(limit).all()
+    items = db.query(TransactionModel).order_by(TransactionModel.id.desc()).offset(skip).limit(limit).all()
     return items
 
 @router.get("/summary", response_model=SummaryResponse)

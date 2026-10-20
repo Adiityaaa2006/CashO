@@ -1,14 +1,15 @@
 export interface Transaction {
   id?: number;
-  amount: number;
+  amount: number | null;
   currency: string;
-  transaction_type: 'DEBIT' | 'CREDIT';
-  merchant_raw?: string;
-  merchant_normalized?: string;
+  transaction_type: 'DEBIT' | 'CREDIT' | 'FAILED' | 'UNKNOWN';
+  merchant_raw?: string | null;
+  merchant_normalized?: string | null;
   category: string;
   confidence: number;
-  transaction_date?: string;
+  transaction_date?: string | null;
   raw_text?: string;
+  is_complete?: boolean;
 }
 
 export interface RuleTraceItem {
