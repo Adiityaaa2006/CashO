@@ -23,8 +23,11 @@ def run_extraction_evaluation():
         norm_merchant, _ = normalizer.normalize(entities.get("merchant_candidate", ""))
 
         exp = item["expected"]
-        if abs(entities["amount"] - exp["amount"]) < 0.01:
+        if exp.get("amount") is None and entities["amount"] is None:
             correct_amount += 1
+        elif exp.get("amount") is not None and entities["amount"] is not None:
+            if abs(entities["amount"] - exp["amount"]) < 0.01:
+                correct_amount += 1
         if entities["transaction_type"] == exp["type"]:
             correct_type += 1
         if exp["merchant"].lower() in norm_merchant.lower():

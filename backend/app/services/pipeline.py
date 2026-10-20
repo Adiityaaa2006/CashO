@@ -27,6 +27,7 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
     overall_confidence = round((norm_conf + cat_conf) / 2.0, 2)
 
     # Step 5: Construct Transaction entity
+    is_complete = entities["amount"] is not None
     tx_data = {
         "amount": entities["amount"],
         "currency": "INR",
@@ -36,25 +37,36 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
         "category": category,
         "confidence": overall_confidence,
         "transaction_date": entities["transaction_date"],
+        "is_complete": is_complete,
     }
     tx_base = TransactionBase(**tx_data)
 
     # Step 6: AI Rule Evaluation
     rule_traces = evaluate_transaction_rules(tx_data)
 
-    # Step 7: Persist if DB session provided
-    if db is not None:
+    # Step 7: Persist if DB session provided and transaction is complete
+    if db is not None and is_complete:
         from app.db.models import TransactionModel
+        db_data = {k: v for k, v in tx_data.items() if k != "is_complete"}
         db_model = TransactionModel(
             raw_text=clean_text,
-            **tx_data
+            **db_data
         )
         db.add(db_model)
         db.commit()
         db.refresh(db_model)
 
+    metadata = {
+        "source": source,
+        "anonymized_preview": clean_text[:40],
+        "is_complete": is_complete,
+        "status": "confirmed" if is_complete else "incomplete",
+    }
+    if not is_complete:
+        metadata["missing_fields"] = ["amount"]
+
     return PipelineResult(
         transaction=tx_base,
         rule_traces=rule_traces,
-        metadata={"source": source, "anonymized_preview": clean_text[:40]}
+        metadata=metadata
     )

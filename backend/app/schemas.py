@@ -7,7 +7,7 @@ class ParseRequest(BaseModel):
     source: str = Field("sms", description="'sms' or 'email'")
 
 class TransactionBase(BaseModel):
-    amount: float
+    amount: Optional[float] = None
     currency: str = "INR"
     transaction_type: str = "DEBIT"  # DEBIT or CREDIT
     merchant_raw: Optional[str] = None
@@ -15,6 +15,7 @@ class TransactionBase(BaseModel):
     category: Optional[str] = "Miscellaneous"
     confidence: float = 0.0
     transaction_date: Optional[datetime] = None
+    is_complete: bool = True
 
 class TransactionCreate(TransactionBase):
     raw_text: str

@@ -33,12 +33,12 @@ def get_summary(db: Session = Depends(get_db)):
     from app.db.models import TransactionModel
     transactions = db.query(TransactionModel).all()
     
-    total_spent = sum(t.amount for t in transactions if t.transaction_type == "DEBIT")
-    total_income = sum(t.amount for t in transactions if t.transaction_type == "CREDIT")
+    total_spent = sum(t.amount for t in transactions if t.transaction_type == "DEBIT" and t.amount is not None)
+    total_income = sum(t.amount for t in transactions if t.transaction_type == "CREDIT" and t.amount is not None)
     
     category_breakdown = {}
     for t in transactions:
-        if t.transaction_type == "DEBIT":
+        if t.transaction_type == "DEBIT" and t.amount is not None:
             category_breakdown[t.category] = category_breakdown.get(t.category, 0.0) + t.amount
 
     return SummaryResponse(

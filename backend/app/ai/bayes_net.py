@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 
 class SimpleBayesCategorizer:
     """Bayesian model to resolve ambiguous transactions (e.g., Amazon, generic UPI).
@@ -14,12 +14,12 @@ class SimpleBayesCategorizer:
             "Miscellaneous": 0.10,
         }
 
-    def infer(self, merchant: str, amount: float) -> Dict[str, float]:
+    def infer(self, merchant: str, amount: Optional[float] = None) -> Dict[str, float]:
         """Compute posterior probabilities given evidence."""
         posteriors = dict(self.priors)
         
-        # Likelihood updates based on amount
-        if merchant.lower() == "amazon":
+        # Likelihood updates based on amount if provided
+        if merchant.lower() == "amazon" and amount is not None:
             if amount < 500:
                 posteriors["Groceries"] *= 2.0  # e.g., Amazon Fresh
                 posteriors["Entertainment"] *= 1.5  # Prime Video rental

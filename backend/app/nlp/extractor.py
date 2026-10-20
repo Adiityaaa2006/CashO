@@ -5,7 +5,8 @@ from dateutil import parser as date_parser
 
 def extract_amount(text: str) -> Optional[float]:
     """Extract transaction amount using regex patterns for INR / USD etc."""
-    pattern = r'(?:Rs\.?|INR|₹|USD|\$)\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]{1,2})?)'
+    # Matches currency symbol followed by amount, ensuring no trailing alphanumeric characters (e.g. rejecting INR 500xyz)
+    pattern = r'(?:Rs\.?|INR|₹|USD|\$)\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]{1,2})?)(?![a-zA-Z0-9])'
     match = re.search(pattern, text, re.IGNORECASE)
     if match:
         amt_str = match.group(1).replace(',', '')
@@ -60,8 +61,9 @@ def extract_date(text: str) -> Optional[datetime]:
 
 def extract_entities(text: str) -> Dict[str, Any]:
     """Orchestrate extraction of amount, type, merchant candidate, and date."""
+    amount = extract_amount(text)
     return {
-        "amount": extract_amount(text) or 0.0,
+        "amount": amount,
         "transaction_type": extract_transaction_type(text),
         "merchant_candidate": extract_merchant_candidate(text),
         "transaction_date": extract_date(text),

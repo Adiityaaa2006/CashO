@@ -4,9 +4,18 @@ from app.schemas import RuleTraceItem
 def evaluate_transaction_rules(transaction: Dict[str, Any]) -> List[RuleTraceItem]:
     """Evaluate forward-chaining rules on a single transaction."""
     traces = []
-    amount = transaction.get("amount", 0.0)
+    amount = transaction.get("amount")
     category = transaction.get("category", "")
     merchant = transaction.get("merchant_normalized", "")
+
+    if amount is None:
+        traces.append(RuleTraceItem(
+            rule_name="INCOMPLETE_TRANSACTION",
+            description="Transaction amount is missing or could not be determined.",
+            recommendation="Review this message manually to supply the missing transaction amount.",
+            severity="warning"
+        ))
+        return traces
 
     # Rule 1: High Single Expense Alert
     if amount > 5000:
