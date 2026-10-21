@@ -87,6 +87,15 @@ def ingest_message(
     Unified entry point for raw message ingestion from all channels
     (Manual, Android SMS, Gmail OAuth, etc.)
     """
+    if len(raw_text or "") > 4000:
+        return {
+            "status": "skipped",
+            "reason": "oversized_text",
+            "transaction_id": None,
+            "duplicate_of_id": None,
+            "review_id": None
+        }
+
     clean_text = preprocess_message(raw_text or "")
     if not clean_text:
         return {
@@ -118,7 +127,7 @@ def ingest_message(
                 "review_id": existing_review.id
             }
 
-    # 2. Exact text check
+    # 2. Exact text check against confirmed transactions
     existing_text = db.query(TransactionModel).filter(TransactionModel.raw_text == clean_text).first()
     if existing_text:
         return {
@@ -127,6 +136,21 @@ def ingest_message(
             "transaction_id": existing_text.id,
             "duplicate_of_id": existing_text.id,
             "review_id": None
+        }
+
+    # 2b. Exact text check against pending review queue items (scoped safely by source)
+    existing_pending_review = db.query(ReviewQueueModel).filter(
+        ReviewQueueModel.raw_text == clean_text,
+        ReviewQueueModel.source == source,
+        ReviewQueueModel.status == "pending"
+    ).first()
+    if existing_pending_review:
+        return {
+            "status": "review_queue",
+            "reason": "existing_review_item",
+            "transaction_id": None,
+            "duplicate_of_id": None,
+            "review_id": existing_pending_review.id
         }
 
     # 3. Run through NLP pipeline without auto-committing
