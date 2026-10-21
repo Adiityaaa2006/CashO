@@ -47,12 +47,14 @@ def extract_transaction_type(text: str) -> str:
             return "FAILED"
 
     # 2. Refunds and reversals (credits back to account)
+    # Exclude policy boilerplate like "refund policy"
+    text_clean_refund = re.sub(r'\brefunds?\s+policy\b', '', text_lower)
     refund_patterns = [
         r'\b(?:refund|reversed|reversal|refunded|cashback|cash\s+back)\b',
         r'\b(?:refund\s+of|refund\s+initiated|refund\s+processed|amount\s+refunded)\b'
     ]
     for pat in refund_patterns:
-        if re.search(pat, text_lower):
+        if re.search(pat, text_clean_refund):
             return "REFUND"
 
     # 3. Credits / Account additions / Wallet top-ups
@@ -77,8 +79,9 @@ def extract_transaction_type(text: str) -> str:
         r'\b(?:debited\s+(?:from|by|with)|has\s+been\s+debited)\b',
         r'\b(?:paid\s+(?:to|for|at|online)|payment\s+(?:to|for|at|successful\s+for|made\s+to))\b',
         r'\b(?:spent\s+(?:on|at)|withdrawn\s+(?:from|at)|sent\s+to|transferred\s+to)\b',
+        r'\b(?:sent|transferred)\s+(?:rs\.?|inr)?\s*[\d,]+(?:\.\d{1,2})?\s+to\b',
         r'\b(?:order\s+(?:placed|confirmed|confirmation|received)|thank\s+you\s+for\s+your\s+order)\b',
-        r'\b(?:purchase\s+(?:at|of|on)|billed\s+to|charged\s+to)\b'
+        r'\b(?:purchase\s+(?:at|of|on|from)|made\s+a\s+purchase|billed\s+to|charged\s+to)\b'
     ]
     for pat in debit_patterns:
         if re.search(pat, text_lower):
@@ -103,9 +106,10 @@ def extract_date(text: str) -> Optional[datetime]:
 
     # 1. Anchor-based transaction date patterns (highest confidence)
     anchored_patterns = [
-        r'(?:transaction\s+date|paid\s+on|txn\s+date|dated|date\s*[:\-])\s*([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})',
-        r'(?:transaction\s+date|paid\s+on|txn\s+date|dated|date\s*[:\-])\s*([0-9]{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*,?\s*[0-9]{2,4})',
-        r'(?:transaction\s+date|paid\s+on|txn\s+date|dated|date\s*[:\-])\s*([0-9]{1,2}-(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-[0-9]{2,4})'
+        r'(?:transaction\s+date|paid\s+on|txn\s+date|dated|order\s+date|date\s*[:\-])\s*([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})',
+        r'(?:transaction\s+date|paid\s+on|txn\s+date|dated|order\s+date|date\s*[:\-])\s*([0-9]{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*,?\s*[0-9]{2,4})',
+        r'(?:transaction\s+date|paid\s+on|txn\s+date|dated|order\s+date|date\s*[:\-])\s*([A-Za-z]{3}\s+[0-9]{1,2},?\s+[0-9]{2,4})',
+        r'(?:transaction\s+date|paid\s+on|txn\s+date|dated|order\s+date|date\s*[:\-])\s*([0-9]{1,2}-(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-[0-9]{2,4})'
     ]
     for pat in anchored_patterns:
         match = re.search(pat, text, re.IGNORECASE)
@@ -156,7 +160,7 @@ def extract_merchant_candidate(text: str) -> Optional[str]:
         r'\b(?:paid to|paid for|payment to|payment for|payment successful for)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,3})',
         r'\b(?:trf to|transferred to|sent to)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,3})',
         r'\b(?:received from|refund from|refund of.*?from|credited from)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,2})',
-        r'\b(?:order at|order on|order from|purchase at)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,2})',
+        r'\b(?:order at|order on|order from|purchase at|purchase from)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,4})',
         r'\b(?:at|vpa|info)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,2})',
         r'\b(?:to)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,3})',
         r'\b(?:from)\s+([A-Za-z0-9&\.\-_@]+(?:\s+[A-Za-z0-9&\.\-_@]+){0,2})',
@@ -200,10 +204,13 @@ def extract_merchant_candidate(text: str) -> Optional[str]:
             raw_candidate = re.sub(r'[,\.:;\-_&]+$', '', raw_candidate).strip()
             raw_candidate = re.sub(r'^[,\.:;\-_&]+', '', raw_candidate).strip()
 
+            # Strip trailing connecting prepositions/noise words
+            raw_candidate = re.sub(r'\s+(?:on|at|for|via|in|by|to|from|with)$', '', raw_candidate, flags=re.IGNORECASE).strip()
+
             cand_lower = raw_candidate.lower()
 
             # Ignore structural, generic, infinitive verbs, or masked identifiers
-            infinitive_verbs = ('open', 'view', 'download', 'use', 'access', 'get', 'know', 'verify', 'check', 'pay', 'see')
+            infinitive_verbs = ('open', 'view', 'download', 'use', 'access', 'get', 'know', 'verify', 'check', 'pay', 'see', 'learn', 'read', 'contact', 'click', 'drop', 'visit', 'shop', 'find', 'talk')
             if any(cand_lower.startswith(v + ' ') or cand_lower == v for v in infinitive_verbs):
                 continue
             if any(cand_lower.startswith(p) for p in [

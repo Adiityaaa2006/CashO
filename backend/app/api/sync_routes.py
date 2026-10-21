@@ -56,6 +56,11 @@ def get_gmail_auth_url():
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Google OAuth Client ID and Secret are not configured in settings."
         )
+    if not settings.SYNC_ENCRYPTION_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="SYNC_ENCRYPTION_KEY is not configured. Encryption is required to store OAuth credentials."
+        )
     try:
         auth_url, state = get_authorization_url()
         return {"auth_url": auth_url, "state": state}
@@ -134,6 +139,12 @@ def ingest_android_sms(
     Secure endpoint for the Android companion application to push filtered bank SMS.
     Requires Bearer API token configured in settings.
     """
+    if not settings.ANDROID_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ANDROID_API_KEY is not configured on the server."
+        )
+
     expected_token = f"Bearer {settings.ANDROID_API_KEY}"
     if not authorization or authorization.strip() != expected_token:
         raise HTTPException(

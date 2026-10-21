@@ -1,3 +1,4 @@
+import re
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.nlp.preprocess import preprocess_message
@@ -64,11 +65,24 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
     if txn_type == "UNKNOWN":
         missing_fields.append("transaction_type")
 
+    # Detect promotional newsletters, market digests, and loyalty points rewards
+    is_promotional = False
+    promo_patterns = [
+        r'\b(?:groww\s+digest|daily\s+digest|market\s+roundup|newsletter)\b',
+        r'\b(?:mcash\s+credited|reward\s+points|loyalty\s+points|worth\s+mcash|successful\s+signup)\b',
+    ]
+    for pat in promo_patterns:
+        if re.search(pat, clean_text, re.IGNORECASE):
+            is_promotional = True
+            break
+
     # Complete transactions require positive amount, confirmed direction (DEBIT, CREDIT, or REFUND), and non-zero direction confidence
-    is_complete = has_amount and (txn_type in ["DEBIT", "CREDIT", "REFUND"]) and (conf_dir >= 0.7)
+    is_complete = has_amount and (txn_type in ["DEBIT", "CREDIT", "REFUND"]) and (conf_dir >= 0.7) and not is_promotional
     
     # Determine lifecycle status
-    if txn_type == "FAILED":
+    if is_promotional:
+        status = "promotional"
+    elif txn_type == "FAILED":
         status = "failed"
     elif not is_complete:
         status = "incomplete"
@@ -125,6 +139,7 @@ def run_pipeline(raw_text: str, source: str = "sms", db: Session = None) -> Pipe
         "status": status,
         "event_type": txn_type,
         "is_refund": (txn_type == "REFUND"),
+        "is_promotional": is_promotional,
         "field_confidences": fc,
     }
     if missing_fields:

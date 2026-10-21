@@ -353,11 +353,18 @@ def reprocess_anomalous_transactions(db: Session, dry_run: bool = True) -> Dict[
         metadata = pipeline_result.metadata
 
         diffs = {}
+        is_promo = metadata.get("is_promotional", False) or metadata.get("status") == "promotional"
+        is_failed = metadata.get("status") == "failed_payment" or new_tx.transaction_type == "FAILED"
 
-        # 1. Date check
+        # 1. Review status check for non-transactions (newsletters, loyalty points) or failed payments
+        if is_promo or is_failed or not new_tx.is_complete:
+            if tx.review_status != "needs_review":
+                diffs["review_status"] = {"old": tx.review_status, "new": "needs_review"}
+
+        # 2. Date check (only for genuine transactions)
         tx_dt = tx.transaction_date
         is_bad_date = tx_dt is None or tx_dt.year < 2015 or tx_dt.year > (datetime.utcnow().year + 1)
-        if is_bad_date:
+        if is_bad_date and not is_promo:
             fixed_date = new_tx.transaction_date or tx.created_at
             if fixed_date and (not tx_dt or tx_dt.isoformat() != fixed_date.isoformat()):
                 diffs["transaction_date"] = {
@@ -365,28 +372,42 @@ def reprocess_anomalous_transactions(db: Session, dry_run: bool = True) -> Dict[
                     "new": fixed_date.isoformat()
                 }
 
-        # 2. Transaction direction check
-        if new_tx.transaction_type in ("CREDIT", "DEBIT", "REFUND", "FAILED") and new_tx.transaction_type != tx.transaction_type:
-            diffs["transaction_type"] = {"old": tx.transaction_type, "new": new_tx.transaction_type}
+        # 3. Transaction direction check (strictly preserve DEBIT/CREDIT schema enum, do not introduce FAILED)
+        if not is_promo and not is_failed:
+            if new_tx.transaction_type in ("CREDIT", "DEBIT") and new_tx.transaction_type != tx.transaction_type:
+                diffs["transaction_type"] = {"old": tx.transaction_type, "new": new_tx.transaction_type}
 
-        # 3. Failed payment check
-        if metadata.get("status") == "failed_payment" or new_tx.transaction_type == "FAILED":
-            if tx.review_status != "needs_review":
-                diffs["review_status"] = {"old": tx.review_status, "new": "needs_review"}
+        # 4. Merchant check:
+        # Only propose merchant changes if:
+        # a) Not promotional/failed
+        # b) Existing merchant is noisy or placeholder (Order No, Please Report, RRN, help@, you earned in, slice bank account, sep 17, unknown)
+        # c) New merchant is clean and not another noisy fragment
+        if not is_promo and not is_failed:
+            curr_merch = (tx.merchant_normalized or tx.merchant_raw or "").strip()
+            curr_raw = (tx.merchant_raw or "").strip()
 
-        # 4. Merchant check
-        new_merch = new_tx.merchant_normalized or new_tx.merchant_raw
-        if new_merch and (tx.merchant_normalized != new_merch or tx.merchant_raw != new_tx.merchant_raw):
-            diffs["merchant_raw"] = {"old": tx.merchant_raw, "new": new_tx.merchant_raw}
-            diffs["merchant_normalized"] = {"old": tx.merchant_normalized, "new": new_tx.merchant_normalized}
+            is_noisy_existing = any(noise in curr_merch.lower() for noise in [
+                "order no", "please report", "rrn", "help@", "if you", "you earned in", "slice bank account", "sep 17", "unknown merchant", "unknown"
+            ]) or any(noise in curr_raw.lower() for noise in ["order no", "please report", "rrn"])
 
-        # 5. Category check
-        if new_tx.category and new_tx.category != tx.category:
-            diffs["category"] = {"old": tx.category, "new": new_tx.category}
+            new_merch = (new_tx.merchant_normalized or "").strip()
+            is_new_noisy = any(noise in new_merch.lower() for noise in [
+                "signup", "lower prices", "learn more", "for example", "rs ", "order no", "please report", "rrn"
+            ])
 
-        # 6. Confidence check
-        if round(tx.confidence, 2) != round(new_tx.confidence, 2) and tx.review_status != "approved":
-            diffs["confidence"] = {"old": tx.confidence, "new": new_tx.confidence}
+            if is_noisy_existing and new_merch and not is_new_noisy and (new_merch != curr_merch or new_tx.merchant_raw != curr_raw):
+                diffs["merchant_raw"] = {"old": tx.merchant_raw, "new": new_tx.merchant_raw}
+                diffs["merchant_normalized"] = {"old": tx.merchant_normalized, "new": new_merch}
+
+        # 5. Category check:
+        if not is_promo and not is_failed:
+            if new_tx.category and new_tx.category != "Miscellaneous" and tx.category != new_tx.category:
+                diffs["category"] = {"old": tx.category, "new": new_tx.category}
+
+        # 6. Confidence check:
+        if not is_promo and not is_failed:
+            if round(tx.confidence, 2) != round(new_tx.confidence, 2) and tx.review_status != "approved":
+                diffs["confidence"] = {"old": tx.confidence, "new": new_tx.confidence}
 
         if diffs:
             updated_items.append({
@@ -398,17 +419,17 @@ def reprocess_anomalous_transactions(db: Session, dry_run: bool = True) -> Dict[
                 if "transaction_date" in diffs:
                     tx.transaction_date = new_tx.transaction_date or tx.created_at
                 if "transaction_type" in diffs:
-                    tx.transaction_type = new_tx.transaction_type
+                    tx.transaction_type = diffs["transaction_type"]["new"]
                 if "review_status" in diffs:
                     tx.review_status = diffs["review_status"]["new"]
                 if "merchant_raw" in diffs:
-                    tx.merchant_raw = new_tx.merchant_raw
+                    tx.merchant_raw = diffs["merchant_raw"]["new"]
                 if "merchant_normalized" in diffs:
-                    tx.merchant_normalized = new_tx.merchant_normalized
+                    tx.merchant_normalized = diffs["merchant_normalized"]["new"]
                 if "category" in diffs:
-                    tx.category = new_tx.category
+                    tx.category = diffs["category"]["new"]
                 if "confidence" in diffs and tx.review_status != "approved":
-                    tx.confidence = new_tx.confidence
+                    tx.confidence = diffs["confidence"]["new"]
 
     if not dry_run and updated_items:
         db.commit()

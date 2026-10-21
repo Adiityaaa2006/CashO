@@ -22,8 +22,11 @@ export async function parseMessage(text: string, source: 'sms' | 'email' = 'sms'
   return response.json();
 }
 
-export async function fetchTransactions(): Promise<Transaction[]> {
-  const response = await fetch(`${API_BASE}/transactions`);
+export async function fetchTransactions(reviewStatus?: string): Promise<Transaction[]> {
+  const url = reviewStatus
+    ? `${API_BASE}/transactions?review_status=${encodeURIComponent(reviewStatus)}`
+    : `${API_BASE}/transactions`;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch transactions');
   }

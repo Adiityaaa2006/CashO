@@ -28,7 +28,7 @@ const SAMPLE_MESSAGES = [
     text: 'Your Amazon.in order #402-19283-1920 confirmation. Total amount: Rs. 1,299.00 paid via Card on 14-Oct-2026.',
   },
   {
-    label: 'Missing Amount (Incomplete)',
+    label: 'Missing Amount (Flagged)',
     source: 'sms' as const,
     text: 'Your payment to Amazon India was successful. Reference: UPI-9849204812.',
   },
@@ -48,7 +48,7 @@ export const Upload: React.FC<UploadProps> = ({ onNavigateToTransactions }) => {
 
   const handleParse = async () => {
     if (!text.trim()) {
-      setError('Please enter SMS or email text to process.');
+      setError('Please provide SMS notification or order email text to parse.');
       return;
     }
     setLoading(true);
@@ -59,7 +59,7 @@ export const Upload: React.FC<UploadProps> = ({ onNavigateToTransactions }) => {
       const data = await parseMessage(text.trim(), source);
       setResult(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to process message.');
+      setError(err.message || 'Pipeline parsing failed.');
     } finally {
       setLoading(false);
     }
@@ -68,22 +68,32 @@ export const Upload: React.FC<UploadProps> = ({ onNavigateToTransactions }) => {
   const status = result?.metadata?.status || (result?.transaction?.is_complete ? 'confirmed' : 'incomplete');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div>
-        <h2 style={{ margin: '0 0 0.5rem 0', fontSize: '1.5rem', color: '#f8fafc' }}>
-          Process Payment Message
-        </h2>
-        <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.95rem' }}>
-          Paste raw SMS notifications or order emails. The NLP engine anonymizes personal identifiers, extracts financial entities, normalizes the merchant, and validates transactions before saving.
-        </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      {/* Editorial Page Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+            <span className="section-label">NLP Laboratory</span>
+            <span style={{ color: 'var(--border-strong)' }}>•</span>
+            <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+              Entity Extraction & Normalization
+            </span>
+          </div>
+          <h1 style={{ margin: 0, fontSize: '2rem', fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text-primary)' }}>
+            Ingest & Parse Sandbox
+          </h1>
+          <p style={{ margin: '0.35rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Test raw notification parsing: anonymization scrub, regex entity extraction, Levenshtein merchant canonicalization, and rule persistence.
+          </p>
+        </div>
       </div>
 
       {/* Preset sample buttons */}
       <div>
-        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Quick Load Sample Messages:
-        </span>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+        <div style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+          Select Test Fixture:
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
           {SAMPLE_MESSAGES.map((sample, idx) => (
             <button
               key={idx}
@@ -91,16 +101,14 @@ export const Upload: React.FC<UploadProps> = ({ onNavigateToTransactions }) => {
                 setText(sample.text);
                 setSource(sample.source);
                 setError(null);
+                setResult(null);
               }}
+              className="btn-secondary btn-sm"
               style={{
-                background: '#1e293b',
-                color: '#38bdf8',
-                border: '1px solid #334155',
-                padding: '0.4rem 0.8rem',
-                borderRadius: '0.375rem',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                fontWeight: 500,
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.75rem',
+                border: text === sample.text ? '1px solid var(--accent-lime)' : undefined,
+                color: text === sample.text ? 'var(--accent-lime)' : undefined,
               }}
             >
               {sample.label}
@@ -109,26 +117,30 @@ export const Upload: React.FC<UploadProps> = ({ onNavigateToTransactions }) => {
         </div>
       </div>
 
-      {/* Input Form */}
-      <div style={{ background: '#1e293b', padding: '1.5rem', borderRadius: '0.75rem', border: '1px solid #334155', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <label style={{ fontWeight: 600, fontSize: '0.9rem', color: '#e2e8f0' }}>Message Content</label>
+      {/* Input Form Terminal Card */}
+      <div className="card-terminal" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Raw Inbound Payload
+            </span>
+            <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+              (Scrubbed prior to extraction)
+            </span>
+          </div>
+
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Source:</span>
+            <label style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+              SOURCE PROTOCOL:
+            </label>
             <select
               value={source}
               onChange={(e) => setSource(e.target.value as 'sms' | 'email')}
-              style={{
-                background: '#0f172a',
-                color: '#f8fafc',
-                border: '1px solid #475569',
-                padding: '0.3rem 0.6rem',
-                borderRadius: '0.375rem',
-                fontSize: '0.85rem',
-              }}
+              className="select-terminal"
+              style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem' }}
             >
-              <option value="sms">SMS Text</option>
-              <option value="email">Order Email</option>
+              <option value="sms">SMS Text Alert</option>
+              <option value="email">Order Receipt Email</option>
             </select>
           </div>
         </div>
@@ -137,184 +149,210 @@ export const Upload: React.FC<UploadProps> = ({ onNavigateToTransactions }) => {
           rows={4}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Paste transaction SMS or order receipt email..."
+          placeholder="Paste raw bank SMS notification, UPI alert, or order receipt..."
+          className="input-terminal"
           style={{
             width: '100%',
-            background: '#0f172a',
-            color: '#f8fafc',
-            border: '1px solid #334155',
-            borderRadius: '0.5rem',
-            padding: '0.75rem',
-            fontSize: '0.95rem',
-            fontFamily: 'inherit',
-            boxSizing: 'border-box',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.85rem',
+            lineHeight: 1.6,
             resize: 'vertical',
+            minHeight: '90px',
           }}
         />
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
           <button
             onClick={() => { setText(''); setResult(null); setError(null); }}
-            style={{
-              background: 'transparent',
-              color: '#94a3b8',
-              border: '1px solid #475569',
-              padding: '0.6rem 1.2rem',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
+            className="btn-secondary"
           >
-            Clear
+            Clear Buffer
           </button>
           <button
             onClick={handleParse}
             disabled={loading}
-            style={{
-              background: loading ? '#0284c7' : '#38bdf8',
-              color: '#0f172a',
-              border: 'none',
-              padding: '0.6rem 1.5rem',
-              borderRadius: '0.5rem',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}
+            className="btn-primary"
           >
-            {loading ? 'Processing NLP...' : 'Run NLP Pipeline & Save'}
+            {loading ? 'Executing Pipeline...' : 'Run NLP Pipeline & Ingest ⟠'}
           </button>
         </div>
       </div>
 
+      {/* Error Alert */}
       {error && (
-        <div style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fecaca', padding: '1rem', borderRadius: '0.5rem' }}>
-          {error}
+        <div
+          style={{
+            background: 'var(--color-debit-dim)',
+            border: '1px solid rgba(229, 106, 84, 0.4)',
+            color: 'var(--color-debit)',
+            padding: '0.85rem 1.25rem',
+            borderRadius: '6px',
+            fontSize: '0.875rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span>⚠ {error}</span>
+          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: 'var(--color-debit)', cursor: 'pointer', fontWeight: 700 }}>✕</button>
         </div>
       )}
 
       {/* Results View */}
       {result && (
-        <div style={{ background: '#1e293b', padding: '1.5rem', borderRadius: '0.75rem', border: '1px solid #334155', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div className="card-terminal" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {/* Status Banner */}
-          <div style={{
-            padding: '1rem',
-            borderRadius: '0.5rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background:
-              status === 'confirmed' ? '#064e3b' :
-              status === 'duplicate' ? '#1e3a8a' :
-              status === 'failed' ? '#7f1d1d' : '#78350f',
-            border: `1px solid ${
-              status === 'confirmed' ? '#10b981' :
-              status === 'duplicate' ? '#3b82f6' :
-              status === 'failed' ? '#ef4444' : '#f59e0b'
-            }`,
-          }}>
+          <div
+            style={{
+              padding: '1rem 1.25rem',
+              borderRadius: '6px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '1rem',
+              background:
+                status === 'confirmed' ? 'var(--accent-lime-dim)' :
+                status === 'duplicate' ? 'var(--color-info-dim)' :
+                status === 'failed' ? 'var(--color-debit-dim)' : 'var(--color-warning-dim)',
+              border: `1px solid ${
+                status === 'confirmed' ? 'rgba(199, 243, 107, 0.3)' :
+                status === 'duplicate' ? 'rgba(96, 165, 250, 0.3)' :
+                status === 'failed' ? 'rgba(229, 106, 84, 0.3)' : 'rgba(234, 179, 8, 0.3)'
+              }`,
+            }}
+          >
             <div>
-              <div style={{ fontWeight: 700, fontSize: '1rem', color: '#f8fafc' }}>
-                {status === 'confirmed' && '✓ Valid Transaction Confirmed & Persisted'}
-                {status === 'duplicate' && 'ℹ Duplicate Transaction (Already Recorded)'}
-                {status === 'failed' && '✗ Payment Failed / Declined (Not Persisted)'}
-                {status === 'incomplete' && '⚠ Incomplete Transaction (Missing Critical Details)'}
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: '0.95rem',
+                  fontFamily: 'var(--font-mono)',
+                  color:
+                    status === 'confirmed' ? 'var(--accent-lime)' :
+                    status === 'duplicate' ? 'var(--color-info)' :
+                    status === 'failed' ? 'var(--color-debit)' : 'var(--color-warning)',
+                }}
+              >
+                {status === 'confirmed' && '✓ VALID TRANSACTION PERSISTED TO LEDGER'}
+                {status === 'duplicate' && 'ℹ DUPLICATE RECORD IDENTIFIED (SKIPPED)'}
+                {status === 'failed' && '✗ TRANSACTION FAILED / DECLINED (EXCLUDED)'}
+                {status === 'incomplete' && '⚠ INCOMPLETE ENTITY (ROUTED TO REVIEW)'}
               </div>
-              <div style={{ fontSize: '0.85rem', color: '#e2e8f0', marginTop: '0.25rem' }}>
-                {status === 'confirmed' && 'All critical fields extracted and verified. Recorded in database.'}
-                {status === 'duplicate' && `This message has already been recorded (ID #${result.metadata?.duplicate_of_id || ''}). Duplicate insertion skipped.`}
-                {status === 'failed' && 'This payment was declined or failed. Excluded from expense ledger.'}
-                {status === 'incomplete' && `Missing required fields: ${(result.metadata?.missing_fields || ['amount']).join(', ')}. Not saved to confirmed ledger.`}
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                {status === 'confirmed' && 'All critical transaction entities validated. Ingested into database.'}
+                {status === 'duplicate' && `Message fingerprint matches existing transaction #${result.metadata?.duplicate_of_id || ''}.`}
+                {status === 'failed' && 'Declined bank attempt. Not counted towards expenditure.'}
+                {status === 'incomplete' && `Missing required fields: ${(result.metadata?.missing_fields || ['amount']).join(', ')}. Placed in review queue.`}
               </div>
             </div>
 
             {status === 'confirmed' && onNavigateToTransactions && (
               <button
                 onClick={onNavigateToTransactions}
-                style={{
-                  background: '#10b981',
-                  color: '#0f172a',
-                  border: 'none',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '0.375rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
+                className="btn-primary btn-sm"
               >
-                View Ledger →
+                Open Ledger →
               </button>
             )}
           </div>
 
-          {/* Extracted Entities Grid */}
+          {/* Extracted Entities Matrix */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             {/* Amount */}
-            <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #334155' }}>
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Amount</div>
-              <div style={{
-                fontSize: '1.4rem',
-                fontWeight: 700,
-                marginTop: '0.25rem',
-                color: result.transaction.amount === null ? '#f59e0b' : '#38bdf8',
-              }}>
-                {result.transaction.amount !== null ? `₹${result.transaction.amount.toFixed(2)}` : 'Missing (None)'}
+            <div style={{ background: 'var(--bg-base)', padding: '1rem', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                Parsed Amount
+              </div>
+              <div
+                className="tabular-nums"
+                style={{
+                  fontSize: '1.4rem',
+                  fontWeight: 700,
+                  marginTop: '0.35rem',
+                  color: result.transaction.amount === null ? 'var(--color-warning)' : 'var(--accent-lime)',
+                }}
+              >
+                {result.transaction.amount !== null ? `₹${result.transaction.amount.toFixed(2)}` : 'NULL (Missing)'}
               </div>
             </div>
 
             {/* Merchant */}
-            <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #334155' }}>
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Merchant</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, marginTop: '0.25rem', color: '#f8fafc' }}>
-                {result.transaction.merchant_normalized || 'Unknown Merchant'}
+            <div style={{ background: 'var(--bg-base)', padding: '1rem', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                Normalized Merchant
+              </div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 700, marginTop: '0.35rem', color: 'var(--text-primary)' }}>
+                {result.transaction.merchant_normalized || 'Unknown'}
               </div>
               {result.transaction.merchant_raw && (
-                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
-                  Raw: {result.transaction.merchant_raw}
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: '0.25rem' }}>
+                  Raw token: "{result.transaction.merchant_raw}"
                 </div>
               )}
             </div>
 
             {/* Direction */}
-            <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #334155' }}>
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Direction</div>
-              <div style={{
-                fontSize: '1.2rem',
-                fontWeight: 700,
-                marginTop: '0.25rem',
-                color:
-                  result.transaction.transaction_type === 'CREDIT' ? '#34d399' :
-                  result.transaction.transaction_type === 'DEBIT' ? '#f87171' :
-                  result.transaction.transaction_type === 'FAILED' ? '#ef4444' : '#f59e0b',
-              }}>
+            <div style={{ background: 'var(--bg-base)', padding: '1rem', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                Direction Flow
+              </div>
+              <div
+                style={{
+                  fontSize: '1.15rem',
+                  fontWeight: 700,
+                  marginTop: '0.35rem',
+                  fontFamily: 'var(--font-mono)',
+                  color:
+                    result.transaction.transaction_type === 'CREDIT' ? 'var(--color-credit)' :
+                    result.transaction.transaction_type === 'DEBIT' ? 'var(--color-debit)' :
+                    result.transaction.transaction_type === 'FAILED' ? 'var(--color-debit)' : 'var(--color-warning)',
+                }}
+              >
                 {result.transaction.transaction_type}
               </div>
             </div>
 
             {/* Date */}
-            <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #334155' }}>
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Transaction Date</div>
-              <div style={{ fontSize: '1rem', fontWeight: 600, marginTop: '0.25rem', color: result.transaction.transaction_date ? '#f8fafc' : '#94a3b8' }}>
-                {result.transaction.transaction_date ? new Date(result.transaction.transaction_date).toLocaleDateString(undefined, { dateStyle: 'medium' }) : 'Not specified'}
+            <div style={{ background: 'var(--bg-base)', padding: '1rem', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                Extracted Date
+              </div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 600, marginTop: '0.35rem', fontFamily: 'var(--font-mono)', color: result.transaction.transaction_date ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                {result.transaction.transaction_date ? new Date(result.transaction.transaction_date).toLocaleDateString(undefined, { dateStyle: 'medium' }) : 'Unspecified'}
               </div>
             </div>
 
             {/* Category */}
-            <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #334155' }}>
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Category</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: '0.25rem', color: '#a78bfa' }}>
+            <div style={{ background: 'var(--bg-base)', padding: '1rem', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                Classification
+              </div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '0.35rem', color: 'var(--accent-lime)' }}>
                 {result.transaction.category}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: '0.25rem' }}>
                 Confidence: {(result.transaction.confidence * 100).toFixed(0)}%
               </div>
             </div>
           </div>
 
-          {/* Anonymized Preview */}
-          <div style={{ fontSize: '0.8rem', color: '#64748b', borderTop: '1px solid #334155', paddingTop: '0.75rem' }}>
-            Privacy scrub preview: <code style={{ color: '#94a3b8' }}>{result.metadata?.anonymized_preview || 'Scrubbed'}...</code>
+          {/* Anonymized Privacy Scrub Preview */}
+          <div
+            style={{
+              fontSize: '0.75rem',
+              color: 'var(--text-muted)',
+              borderTop: '1px solid var(--border-subtle)',
+              paddingTop: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <span style={{ fontFamily: 'var(--font-mono)' }}>PII Scrub Preview:</span>
+            <code style={{ color: 'var(--text-secondary)', background: 'var(--bg-base)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+              {result.metadata?.anonymized_preview || 'Anonymized'}
+            </code>
           </div>
         </div>
       )}

@@ -10,11 +10,19 @@ def _get_fernet() -> Fernet:
     """Initialize Fernet cipher using configured secret encryption key."""
     key = settings.SYNC_ENCRYPTION_KEY
     if not key:
-        # Fallback to standard 32-byte urlsafe base64 key
-        key = Fernet.generate_key().decode()
+        raise ValueError(
+            "SYNC_ENCRYPTION_KEY is not configured. "
+            "Please configure a valid 32-byte Fernet key in your local .env file or environment."
+        )
     if isinstance(key, str):
-        key = key.encode()
-    return Fernet(key)
+        key = key.encode("utf-8")
+    try:
+        return Fernet(key)
+    except Exception as e:
+        logger.error("Failed to initialize Fernet cipher: invalid encryption key format.")
+        raise ValueError(
+            "SYNC_ENCRYPTION_KEY is invalid. It must be a 32-byte url-safe base64-encoded string."
+        )
 
 def encrypt_text(plain_text: str) -> str:
     """Encrypt a plain text string into a Fernet cipher token."""

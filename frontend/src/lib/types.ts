@@ -55,6 +55,7 @@ export interface ReviewItem {
   raw_text: string;
   suggested_amount?: number | null;
   suggested_currency: string;
+  suggested_transaction_type?: string | null;
   suggested_merchant?: string | null;
   suggested_category?: string | null;
   suggested_date?: string | null;

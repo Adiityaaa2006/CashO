@@ -34,7 +34,10 @@ frontend/.cache/
 
 # Env & IDE
 .env
-.env.local
+.env.*
+!.env.example
+*.env
+backend/.env
 .vscode/
 .idea/
 .DS_Store

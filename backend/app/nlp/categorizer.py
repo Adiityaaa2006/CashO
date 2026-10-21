@@ -21,6 +21,7 @@ DEFAULT_MERCHANT_CATEGORIES = {
     "PhonePe": "Bills & Utilities",
     "Google Pay": "Bills & Utilities",
     "CRED": "Bills & Utilities",
+    "Google Play": "Entertainment",
     "Slice": "Income",
     "Salary": "Income",
 }
