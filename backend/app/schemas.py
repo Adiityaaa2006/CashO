@@ -54,6 +54,7 @@ class BatchIngestItem(BaseModel):
     source: str = Field("sms", description="Source provider: 'sms', 'email', 'gmail', 'android'")
     external_id: Optional[str] = Field(None, description="External message ID (e.g. Gmail message ID or Android SMS ID)")
     timestamp: Optional[datetime] = Field(None, description="Message arrival or delivery timestamp")
+    as_review: Optional[bool] = Field(None, description="Force route candidate to review queue for user approval")
 
 class BatchIngestRequest(BaseModel):
     items: List[BatchIngestItem]

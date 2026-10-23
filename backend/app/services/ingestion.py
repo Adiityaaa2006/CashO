@@ -81,7 +81,8 @@ def ingest_message(
     raw_text: str,
     source: str = "sms",
     external_id: Optional[str] = None,
-    timestamp: Optional[datetime] = None
+    timestamp: Optional[datetime] = None,
+    as_review: bool = False
 ) -> Dict[str, Any]:
     """
     Unified entry point for raw message ingestion from all channels
@@ -120,8 +121,8 @@ def ingest_message(
         existing_review = db.query(ReviewQueueModel).filter(ReviewQueueModel.external_id == external_id).first()
         if existing_review:
             return {
-                "status": "review_queue",
-                "reason": "existing_review_item",
+                "status": "duplicate",
+                "reason": "duplicate_external_id",
                 "transaction_id": None,
                 "duplicate_of_id": None,
                 "review_id": existing_review.id
@@ -164,10 +165,10 @@ def ingest_message(
         reason = "incomplete_transaction"
         if tx.amount is None:
             reason = "missing_amount"
+        elif metadata.get("status") in ("failed", "failed_payment") or tx.transaction_type == "FAILED":
+            reason = "failed_payment"
         elif tx.transaction_type not in ("DEBIT", "CREDIT", "REFUND"):
             reason = f"unsupported_type_{tx.transaction_type.lower()}"
-        elif metadata.get("status") == "failed_payment":
-            reason = "failed_payment"
 
         review_item = ReviewQueueModel(
             source=source,
@@ -220,7 +221,35 @@ def ingest_message(
             "pipeline_result": pipeline_result
         }
 
-    # 6. Insert new verified transaction
+    # 6. Save as review candidate if as_review is True (preserves user approval workflow)
+    if as_review:
+        review_item = ReviewQueueModel(
+            source=source,
+            external_id=external_id,
+            raw_text=clean_text,
+            suggested_amount=tx.amount,
+            suggested_currency=tx.currency,
+            suggested_transaction_type=tx.transaction_type,
+            suggested_merchant=tx.merchant_normalized or tx.merchant_raw,
+            suggested_category=tx.category,
+            suggested_date=tx.transaction_date or timestamp,
+            reason="pending_user_approval",
+            status="pending"
+        )
+        db.add(review_item)
+        db.commit()
+        db.refresh(review_item)
+
+        return {
+            "status": "review_queue",
+            "reason": "pending_user_approval",
+            "transaction_id": None,
+            "duplicate_of_id": None,
+            "review_id": review_item.id,
+            "pipeline_result": pipeline_result
+        }
+
+    # 7. Insert new verified transaction
     db_model = TransactionModel(
         raw_text=clean_text,
         amount=tx.amount,
@@ -249,7 +278,11 @@ def ingest_message(
     }
 
 
-def ingest_batch(db: Session, items: List[BatchIngestItem]) -> BatchIngestResponse:
+def ingest_batch(
+    db: Session,
+    items: List[BatchIngestItem],
+    review_mode: bool = False
+) -> BatchIngestResponse:
     """Process a batch of incoming messages sequentially with transactional safety."""
     results: List[BatchIngestItemResult] = []
     total = len(items)
@@ -260,12 +293,14 @@ def ingest_batch(db: Session, items: List[BatchIngestItem]) -> BatchIngestRespon
 
     for idx, item in enumerate(items):
         try:
+            item_as_review = review_mode or getattr(item, 'as_review', None) is True
             res = ingest_message(
                 db=db,
                 raw_text=item.text,
                 source=item.source,
                 external_id=item.external_id,
-                timestamp=item.timestamp
+                timestamp=item.timestamp,
+                as_review=item_as_review
             )
             st = res["status"]
             if st == "inserted":

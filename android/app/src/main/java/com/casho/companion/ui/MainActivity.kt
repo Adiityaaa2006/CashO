@@ -74,7 +74,7 @@ class MainActivity : ComponentActivity() {
     private fun triggerOneTimeSync() {
         val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>().build()
         WorkManager.getInstance(this).enqueue(syncRequest)
-        Toast.makeText(this, "Sync initiated in background", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "SMS synchronization initiated in background", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -91,13 +91,22 @@ fun CompanionScreen(
 
     var serverUrl by remember { mutableStateOf(repository.serverUrl) }
     var apiKey by remember { mutableStateOf(repository.apiKey) }
-    var autoSync by remember { mutableStateOf(repository.isAutoSyncEnabled) }
+    var isSmsSyncEnabled by remember { mutableStateOf(repository.isSmsSyncEnabled) }
+    var isAutoSyncEnabled by remember { mutableStateOf(repository.isAutoSyncEnabled) }
     var syncStatus by remember { mutableStateOf(repository.lastSyncStatus) }
+
+    // Telemetry counts
+    var detectedCount by remember { mutableStateOf(repository.lastDetectedCount) }
+    var uploadedCount by remember { mutableStateOf(repository.lastUploadedCount) }
+    var skippedCount by remember { mutableStateOf(repository.lastSkippedCount) }
+    var duplicateCount by remember { mutableStateOf(repository.lastDuplicateCount) }
+    var reviewCount by remember { mutableStateOf(repository.lastReviewCount) }
 
     // Manual Import State
     var manualInputText by remember { mutableStateOf("") }
     var isSubmittingManual by remember { mutableStateOf(false) }
     var manualImportResult by remember { mutableStateOf<ManualImportResult?>(null) }
+    var showPermissionRationaleModal by remember { mutableStateOf(false) }
 
     // Prefill shared text when launched via ACTION_SEND
     LaunchedEffect(initialImportText) {
@@ -150,7 +159,7 @@ fun CompanionScreen(
                     color = Color(0xFF38BDF8)
                 )
                 Text(
-                    text = "Bank SMS Ingestion & Manual Import",
+                    text = "Bank SMS Ingestion & Financial Privacy Gateway",
                     fontSize = 13.sp,
                     color = Color(0xFF94A3B8)
                 )
@@ -160,7 +169,7 @@ fun CompanionScreen(
                 contentColor = Color.White
             ) {
                 Text(
-                    text = if (apiKey.isNotBlank()) "Configured" else "Key Missing",
+                    text = if (apiKey.isNotBlank()) "Paired" else "Key Required",
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold
@@ -168,7 +177,7 @@ fun CompanionScreen(
             }
         }
 
-        // Section 1: Manual UPI / SMS Import Card (No READ_SMS permission needed)
+        // Section 1: Automated SMS Ingestion Card (Requires Consent)
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
             shape = RoundedCornerShape(12.dp),
@@ -181,7 +190,221 @@ fun CompanionScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "1. Manual UPI / SMS Import",
+                        text = "1. Automated Bank SMS Synchronization",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                    Badge(
+                        containerColor = if (isSmsSyncEnabled && hasSmsPermission) Color(0xFF10B981) else Color(0xFF64748B),
+                        contentColor = Color.White
+                    ) {
+                        Text(
+                            text = if (isSmsSyncEnabled && hasSmsPermission) "ACTIVE" else "DISABLED",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Scans incoming messages locally on-device. Identifies UPI, bank credits and debits, P2P transfers, and refunds. OTPs, passwords, and private chats are strictly filtered out and never transmitted.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF94A3B8),
+                    lineHeight = 18.sp
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // SMS Sync Master Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Enable SMS Synchronization",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Master switch to allow SMS ingestion",
+                            color = Color(0xFF64748B),
+                            fontSize = 12.sp
+                        )
+                    }
+                    Switch(
+                        checked = isSmsSyncEnabled,
+                        onCheckedChange = { isChecked ->
+                            isSmsSyncEnabled = isChecked
+                            repository.isSmsSyncEnabled = isChecked
+                            if (isChecked && !hasSmsPermission) {
+                                showPermissionRationaleModal = true
+                            }
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Permission Status & Action
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("SMS Permission Status:", color = Color(0xFF94A3B8), fontSize = 13.sp)
+                        Text(
+                            text = if (hasSmsPermission) "✓ READ_SMS Granted" else "✕ Permission Not Granted",
+                            color = if (hasSmsPermission) Color(0xFF34D399) else Color(0xFFF87171),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                    if (!hasSmsPermission) {
+                        Button(
+                            onClick = { showPermissionRationaleModal = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Review Permission", fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Periodic Background Sync Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Periodic Auto-Sync (1 hr)", color = Color.White, fontSize = 14.sp)
+                        Text("Syncs in background when online", color = Color(0xFF64748B), fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = isAutoSyncEnabled,
+                        enabled = isSmsSyncEnabled && hasSmsPermission,
+                        onCheckedChange = { isChecked ->
+                            isAutoSyncEnabled = isChecked
+                            repository.isAutoSyncEnabled = isChecked
+                            val workManager = WorkManager.getInstance(context)
+                            if (isChecked) {
+                                val periodicRequest = PeriodicWorkRequestBuilder<SyncWorker>(1, TimeUnit.HOURS)
+                                    .setConstraints(
+                                        Constraints.Builder()
+                                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                                            .build()
+                                    )
+                                    .build()
+                                workManager.enqueueUniquePeriodicWork(
+                                    "CashO_Companion_Sync",
+                                    ExistingPeriodicWorkPolicy.UPDATE,
+                                    periodicRequest
+                                )
+                                Toast.makeText(context, "Background auto-sync enabled", Toast.LENGTH_SHORT).show()
+                            } else {
+                                workManager.cancelUniqueWork("CashO_Companion_Sync")
+                                Toast.makeText(context, "Background auto-sync disabled", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Manual Trigger Sync Button
+                Button(
+                    onClick = {
+                        if (!isSmsSyncEnabled) {
+                            Toast.makeText(context, "Please enable SMS Synchronization first.", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (!hasSmsPermission) {
+                            showPermissionRationaleModal = true
+                            return@Button
+                        }
+                        if (apiKey.isBlank()) {
+                            Toast.makeText(context, "Please configure Companion API Key in Connection Settings below.", Toast.LENGTH_LONG).show()
+                            return@Button
+                        }
+                        onSyncNow()
+                        syncStatus = "Synchronization enqueued..."
+                    },
+                    enabled = isSmsSyncEnabled && hasSmsPermission && apiKey.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Sync Bank SMS Now ↻", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Sync Telemetry & Telemetry Box
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color(0xFF334155), RoundedCornerShape(8.dp))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = "Telemetry & Filter Audit:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF38BDF8)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Detected Candidates:", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                            Text("$detectedCount", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Uploaded to Review Queue:", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                            Text("$reviewCount", fontSize = 11.sp, color = Color(0xFF34D399), fontWeight = FontWeight.SemiBold)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Duplicates Avoided:", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                            Text("$duplicateCount", fontSize = 11.sp, color = Color(0xFFFBBF24), fontWeight = FontWeight.SemiBold)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Filtered / Skipped (OTP/Spam):", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                            Text("$skippedCount", fontSize = 11.sp, color = Color(0xFF94A3B8), fontWeight = FontWeight.SemiBold)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Status: $syncStatus",
+                            fontSize = 11.sp,
+                            color = Color(0xFFCBD5E1)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Section 2: Manual UPI / SMS Import Card (Fallback without READ_SMS)
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "2. Manual UPI / SMS Paste",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White
@@ -200,19 +423,17 @@ fun CompanionScreen(
 
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Paste a transaction SMS or share it directly from your SMS/UPI app into CashO. Preview extracted details before importing.",
+                    text = "Paste a transaction message or share it directly from your banking/UPI app. Local extraction displays an instant preview before submitting.",
                     fontSize = 13.sp,
                     color = Color(0xFF94A3B8)
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Multiline Input Field
                 OutlinedTextField(
                     value = manualInputText,
                     onValueChange = {
                         manualInputText = it
-                        // Clear previous submission result when input changes
                         if (manualImportResult != null) {
                             manualImportResult = null
                         }
@@ -236,7 +457,6 @@ fun CompanionScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Character counter & length limit warning
                 val textLength = manualInputText.length
                 val isOverLimit = textLength > ManualImportHelper.MAX_MESSAGE_LENGTH
                 Row(
@@ -254,7 +474,6 @@ fun CompanionScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Actions: Paste, Clear
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -288,7 +507,6 @@ fun CompanionScreen(
                     }
                 }
 
-                // Safe Preview Box (if text is present)
                 if (manualInputText.isNotBlank()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     val preview = remember(manualInputText) {
@@ -365,20 +583,12 @@ fun CompanionScreen(
                                     Text(preview.dateCandidate, fontSize = 12.sp, color = Color.White)
                                 }
                             }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Notice: Preliminary preview. Final classification, normalization, and AI rule reasoning are evaluated on the CashO backend server.",
-                                fontSize = 10.sp,
-                                color = Color(0xFF64748B)
-                            )
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Submit / Import Button
                 Button(
                     onClick = {
                         if (manualInputText.isBlank()) {
@@ -425,7 +635,6 @@ fun CompanionScreen(
                     }
                 }
 
-                // Result Feedback Display
                 manualImportResult?.let { res ->
                     Spacer(modifier = Modifier.height(12.dp))
                     when (res) {
@@ -480,133 +689,11 @@ fun CompanionScreen(
                                 }
                             }
                         }
-                        is ManualImportResult.AuthError -> {
-                            ErrorFeedbackCard(
-                                title = "Authentication Error (401/403)",
-                                message = res.message
-                            )
-                        }
-                        is ManualImportResult.ValidationError -> {
-                            ErrorFeedbackCard(
-                                title = "Validation Error",
-                                message = res.message
-                            )
-                        }
-                        is ManualImportResult.NetworkError -> {
-                            ErrorFeedbackCard(
-                                title = "Network / Connection Error",
-                                message = res.message
-                            )
-                        }
+                        is ManualImportResult.AuthError -> ErrorFeedbackCard("Authentication Error (401/403)", res.message)
+                        is ManualImportResult.ValidationError -> ErrorFeedbackCard("Validation Error", res.message)
+                        is ManualImportResult.NetworkError -> ErrorFeedbackCard("Network / Connection Error", res.message)
                     }
                 }
-            }
-        }
-
-        // Section 2: Automated SMS Ingestion Card (Requires READ_SMS)
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "2. Automated Inbox SMS Ingestion",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Automatically scan device inbox for bank transaction SMS (HDFC, SBI, ICICI, etc.). Personal texts are never read or uploaded.",
-                    fontSize = 13.sp,
-                    color = Color(0xFF94A3B8)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                if (!hasSmsPermission) {
-                    Button(
-                        onClick = { permissionLauncher.launch(Manifest.permission.READ_SMS) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
-                    ) {
-                        Text("Grant SMS Permission")
-                    }
-                } else {
-                    Text(
-                        text = "✓ Permission Granted",
-                        color = Color(0xFF34D399),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Periodic Auto-Sync (1 hr)",
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                    Switch(
-                        checked = autoSync,
-                        onCheckedChange = { isChecked ->
-                            autoSync = isChecked
-                            repository.isAutoSyncEnabled = isChecked
-                            val workManager = WorkManager.getInstance(context)
-                            if (isChecked) {
-                                val periodicRequest = PeriodicWorkRequestBuilder<SyncWorker>(1, TimeUnit.HOURS)
-                                    .setConstraints(
-                                        Constraints.Builder()
-                                            .setRequiredNetworkType(NetworkType.CONNECTED)
-                                            .build()
-                                    )
-                                    .build()
-                                workManager.enqueueUniquePeriodicWork(
-                                    "CashO_Companion_Sync",
-                                    ExistingPeriodicWorkPolicy.UPDATE,
-                                    periodicRequest
-                                )
-                                Toast.makeText(context, "Background sync enabled", Toast.LENGTH_SHORT).show()
-                            } else {
-                                workManager.cancelUniqueWork("CashO_Companion_Sync")
-                                Toast.makeText(context, "Background sync disabled", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Button(
-                    onClick = {
-                        if (!hasSmsPermission) {
-                            permissionLauncher.launch(Manifest.permission.READ_SMS)
-                            return@Button
-                        }
-                        if (apiKey.isBlank()) {
-                            Toast.makeText(context, "Please enter Companion API Key", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        onSyncNow()
-                        syncStatus = "Sync requested..."
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Sync Bank SMS Now", fontWeight = FontWeight.Bold)
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Status: $syncStatus",
-                    color = Color(0xFF94A3B8),
-                    fontSize = 12.sp
-                )
             }
         }
 
@@ -618,10 +705,17 @@ fun CompanionScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "3. Connection Settings",
+                    text = "3. Connection Settings & Topology",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Note: 'localhost' from a physical Android device refers to the phone itself. Use your computer's local Wi-Fi IP address (e.g., http://192.168.1.15:8000) for physical phones, or http://10.0.2.2:8000 for the official Android Emulator.",
+                    fontSize = 12.sp,
+                    color = Color(0xFF94A3B8),
+                    lineHeight = 16.sp
                 )
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -632,7 +726,7 @@ fun CompanionScreen(
                         repository.serverUrl = it
                     },
                     label = { Text("Server URL", color = Color(0xFF94A3B8)) },
-                    placeholder = { Text("http://10.0.2.2:8000") },
+                    placeholder = { Text("http://10.0.2.2:8000 or http://192.168.1.15:8000") },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
@@ -650,7 +744,7 @@ fun CompanionScreen(
                         apiKey = it
                         repository.apiKey = it
                     },
-                    label = { Text("Companion API Key", color = Color(0xFF94A3B8)) },
+                    label = { Text("Companion API Key (ANDROID_API_KEY)", color = Color(0xFF94A3B8)) },
                     placeholder = { Text("casho_android_sync_key_98765") },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
@@ -662,6 +756,49 @@ fun CompanionScreen(
                 )
             }
         }
+    }
+
+    // Permission Rationale Modal
+    if (showPermissionRationaleModal) {
+        AlertDialog(
+            onDismissRequest = { showPermissionRationaleModal = false },
+            title = {
+                Text("SMS Access Consent", fontWeight = FontWeight.Bold, color = Color.White)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "CashO requires READ_SMS permission exclusively to detect and ingest bank and UPI transactional messages.",
+                        fontSize = 13.sp,
+                        color = Color(0xFFCBD5E1)
+                    )
+                    Text(
+                        "🔒 Privacy Guarantee:\n• Evaluated entirely on your device.\n• OTPs, auth codes, and private conversations are immediately discarded.\n• Only recognized payment alerts are sent to your local CashO server.\n• You can disable synchronization at any time.",
+                        fontSize = 12.sp,
+                        color = Color(0xFF94A3B8),
+                        lineHeight = 18.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPermissionRationaleModal = false
+                        permissionLauncher.launch(Manifest.permission.READ_SMS)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                ) {
+                    Text("Grant Permission")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermissionRationaleModal = false }) {
+                    Text("Decline", color = Color(0xFF94A3B8))
+                }
+            },
+            containerColor = Color(0xFF1E293B),
+            shape = RoundedCornerShape(12.dp)
+        )
     }
 }
 

@@ -133,6 +133,7 @@ def trigger_gmail_sync(
 def ingest_android_sms(
     batch: BatchIngestRequest,
     authorization: Optional[str] = Header(None),
+    review_mode: bool = Query(False, description="When true, all incoming candidates are saved as pending review items"),
     db: Session = Depends(get_db)
 ):
     """
@@ -152,7 +153,7 @@ def ingest_android_sms(
             detail="Invalid or missing companion authorization token."
         )
 
-    response = ingest_batch(db, batch.items)
+    response = ingest_batch(db, batch.items, review_mode=review_mode)
 
     # Upsert Android connection state
     conn = db.query(SyncConnectionModel).filter(SyncConnectionModel.provider == "android").first()

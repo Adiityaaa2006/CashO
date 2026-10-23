@@ -529,19 +529,64 @@ export function Connections({ onRefreshTransactions }: ConnectionsProps) {
                 >
                   {/* Top Metadata Header */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <span className="badge badge-gray">{item.source.toUpperCase()}</span>
-                      <span className="badge badge-coral">FLAG: {item.reason}</span>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {item.source.toLowerCase().includes('android') || item.source.toLowerCase() === 'sms' ? (
+                        <span className="badge badge-blue">📱 ANDROID SMS</span>
+                      ) : item.source.toLowerCase().includes('gmail') ? (
+                        <span className="badge badge-lime">✉ GMAIL</span>
+                      ) : (
+                        <span className="badge badge-gray">{item.source.toUpperCase()}</span>
+                      )}
+
+                      {item.reason === 'pending_user_approval' ? (
+                        <span className="badge badge-lime">READY FOR APPROVAL</span>
+                      ) : item.reason === 'missing_amount' ? (
+                        <span className="badge badge-coral">MISSING AMOUNT</span>
+                      ) : item.reason === 'unknown_direction' || item.reason === 'unsupported_type_unknown' ? (
+                        <span className="badge badge-yellow" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#FBBF24', border: '1px solid rgba(245, 158, 11, 0.4)' }}>
+                          UNCLEAR DIRECTION
+                        </span>
+                      ) : item.reason === 'failed_payment' ? (
+                        <span className="badge badge-coral">FAILED PAYMENT</span>
+                      ) : (
+                        <span className="badge badge-coral">FLAG: {item.reason}</span>
+                      )}
+
                       {item.status !== 'pending' && (
                         <span className={item.status === 'approved' ? 'badge badge-lime' : 'badge badge-coral'}>
                           {item.status.toUpperCase()}
                         </span>
                       )}
+
+                      {item.external_id && (
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                          Ref: <code style={{ color: 'var(--accent-lime)' }}>{item.external_id}</code>
+                        </span>
+                      )}
                     </div>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      #{item.id} • {new Date(item.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
-                    </span>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>
+                      {item.suggested_date && (
+                        <span style={{ color: 'var(--text-secondary)' }}>
+                          Txn Date: <strong style={{ color: 'var(--text-primary)' }}>{new Date(item.suggested_date).toLocaleDateString()}</strong>
+                        </span>
+                      )}
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        #{item.id} • {new Date(item.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Informative Guidance Banner for Ambiguous Items */}
+                  {item.status === 'pending' && (!item.suggested_amount || item.suggested_transaction_type === 'UNKNOWN' || item.reason === 'failed_payment') && (
+                    <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px', padding: '0.45rem 0.75rem', fontSize: '0.78rem', color: '#FBBF24' }}>
+                      {!item.suggested_amount
+                        ? '⚠️ Amount could not be confidently recognized. Please inspect the message and specify amount.'
+                        : item.suggested_transaction_type === 'UNKNOWN'
+                        ? '⚠️ Flow direction is ambiguous. Verify whether money entered (CREDIT) or left (DEBIT) your account.'
+                        : '⚠️ This payment was flagged as declined/failed. Verify before approving.'}
+                    </div>
+                  )}
 
                   {/* Raw Masked Source Text */}
                   <div

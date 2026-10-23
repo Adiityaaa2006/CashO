@@ -3,26 +3,28 @@ package com.casho.companion.service
 import android.content.Context
 import android.net.Uri
 import android.provider.Telephony
+import com.casho.companion.filter.PaymentSmsFilter
 import com.casho.companion.model.SmsMessageItem
 
 class SmsReader(private val context: Context) {
 
-    // Bank and financial sender patterns common in India (e.g. VK-HDFCBK, AX-SBIINB, SWIGGY)
-    private val bankSenderRegex = Regex(
-        "(?i)(HDFC|SBI|ICICI|AXIS|KOTAK|PNB|BOB|CANARA|YESBK|INDUS|UNIONB|PAYTM|GPAY|PHONEPE|CRED|AMAZON|SWIGGY|ZOMATO|FLIPKART)"
-    )
-
-    // Financial transaction intent patterns
-    private val financialBodyKeywords = listOf(
-        "debited", "credited", "spent", "withdrawn", "paid", "transferred",
-        "inr", "rs.", "rs ", "txn", "vpa", "upi ref", "card ending"
-    )
+    var lastScanTotalMessages: Int = 0
+        private set
+    var lastScanAcceptedMessages: Int = 0
+        private set
+    var lastScanSkippedMessages: Int = 0
+        private set
 
     /**
      * Read bank transactional SMS messages newer than the given timestamp.
+     * Evaluates messages locally using PaymentSmsFilter. Never transmits OTPs or personal texts.
      */
     fun readFinancialSms(sinceTimestamp: Long = 0L, limit: Int = 100): List<SmsMessageItem> {
         val messages = mutableListOf<SmsMessageItem>()
+        lastScanTotalMessages = 0
+        lastScanAcceptedMessages = 0
+        lastScanSkippedMessages = 0
+
         val uri: Uri = Telephony.Sms.Inbox.CONTENT_URI
         val projection = arrayOf(
             Telephony.Sms._ID,
@@ -51,12 +53,14 @@ class SmsReader(private val context: Context) {
                 val dateCol = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
 
                 while (it.moveToNext() && messages.size < limit) {
+                    lastScanTotalMessages++
                     val id = it.getString(idCol)
                     val sender = it.getString(addressCol) ?: ""
                     val body = it.getString(bodyCol) ?: ""
                     val date = it.getLong(dateCol)
 
-                    if (isFinancialMessage(sender, body)) {
+                    if (PaymentSmsFilter.isPaymentSms(sender, body)) {
+                        lastScanAcceptedMessages++
                         messages.add(
                             SmsMessageItem(
                                 id = id,
@@ -65,24 +69,17 @@ class SmsReader(private val context: Context) {
                                 timestamp = date
                             )
                         )
+                    } else {
+                        lastScanSkippedMessages++
                     }
                 }
             }
         } catch (e: SecurityException) {
-            // Permission not granted
+            // Permission not granted or revoked at runtime
+        } catch (e: Exception) {
+            // General query error
         }
 
         return messages
-    }
-
-    private fun isFinancialMessage(sender: String, body: String): Boolean {
-        val lowerBody = body.lowercase()
-        // 1. Must contain financial keywords
-        val hasFinancialKeywords = financialBodyKeywords.any { lowerBody.contains(it) }
-        if (!hasFinancialKeywords) return false
-
-        // 2. Either sender matches known bank/payment gateway, or contains standard bank headers
-        val senderMatchesBank = bankSenderRegex.containsMatchIn(sender) || sender.length >= 6
-        return senderMatchesBank
     }
 }

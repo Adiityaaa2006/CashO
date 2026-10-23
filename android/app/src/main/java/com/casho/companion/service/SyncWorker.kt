@@ -1,6 +1,9 @@
 package com.casho.companion.service
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.casho.companion.model.BatchIngestRequest
@@ -36,22 +39,44 @@ class SyncWorker(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val serverUrl = repository.serverUrl
-        val apiKey = repository.apiKey
-
-        if (apiKey.isBlank()) {
-            repository.lastSyncStatus = "Failed: API key not set"
-            return@withContext Result.failure()
-        }
-
-        val sinceTimestamp = repository.lastSyncTimestamp
-        val messages = smsReader.readFinancialSms(sinceTimestamp = sinceTimestamp, limit = 50)
-
-        if (messages.isEmpty()) {
-            repository.lastSyncStatus = "Synced at ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())} (0 new transactions)"
+        // 1. Check if user enabled SMS synchronization
+        if (!repository.isSmsSyncEnabled) {
+            repository.lastSyncStatus = "Idle: SMS synchronization is disabled in settings"
             return@withContext Result.success()
         }
 
+        // 2. Check runtime permission (never read without user consent)
+        val hasPermission = ContextCompat.checkSelfPermission(
+            applicationContext,
+            Manifest.permission.READ_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasPermission) {
+            repository.lastSyncStatus = "Failed: READ_SMS permission is not granted"
+            return@withContext Result.failure()
+        }
+
+        // 3. Check API Key
+        val serverUrl = repository.serverUrl
+        val apiKey = repository.apiKey
+        if (apiKey.isBlank()) {
+            repository.lastSyncStatus = "Failed: Companion API key not configured"
+            return@withContext Result.failure()
+        }
+
+        // 4. Scan financial messages locally
+        val sinceTimestamp = repository.lastSyncTimestamp
+        val messages = smsReader.readFinancialSms(sinceTimestamp = sinceTimestamp, limit = 50)
+        repository.lastDetectedCount = messages.size
+        repository.lastSkippedCount = smsReader.lastScanSkippedMessages
+
+        if (messages.isEmpty()) {
+            val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            repository.lastSyncStatus = "Synced at $timeStr (0 new payment messages detected)"
+            return@withContext Result.success()
+        }
+
+        // 5. Build payload
         val payloadItems = messages.map { msg ->
             IngestItemPayload(
                 text = msg.body,
@@ -65,8 +90,10 @@ class SyncWorker(
         val jsonBody = gson.toJson(batchRequest)
         val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
 
+        // Ingest as review candidates so dashboard totals require user confirmation
+        val endpointUrl = "$serverUrl/api/sync/android/ingest?review_mode=true"
         val request = Request.Builder()
-            .url("$serverUrl/api/sync/android/ingest")
+            .url(endpointUrl)
             .addHeader("Authorization", "Bearer $apiKey")
             .post(requestBody)
             .build()
@@ -77,10 +104,14 @@ class SyncWorker(
                     val responseBody = response.body?.string()
                     val batchResponse = gson.fromJson(responseBody, BatchIngestResponse::class.java)
 
-                    // Advance cursor to latest message timestamp
                     val maxTimestamp = messages.maxOf { it.timestamp }
                     repository.lastSyncTimestamp = maxTimestamp
-                    repository.lastSyncStatus = "Success: ${batchResponse?.inserted ?: 0} inserted, ${batchResponse?.duplicates ?: 0} duplicates"
+                    repository.lastUploadedCount = messages.size
+                    repository.lastDuplicateCount = batchResponse?.duplicates ?: 0
+                    repository.lastReviewCount = batchResponse?.review_queue ?: 0
+
+                    val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    repository.lastSyncStatus = "Synced at $timeStr: ${batchResponse?.review_queue ?: 0} candidates in review, ${batchResponse?.duplicates ?: 0} duplicates"
                     Result.success()
                 } else {
                     val errorMsg = "HTTP ${response.code}: ${response.message}"
@@ -89,7 +120,7 @@ class SyncWorker(
                 }
             }
         } catch (e: Exception) {
-            repository.lastSyncStatus = "Sync failed: ${e.localizedMessage}"
+            repository.lastSyncStatus = "Sync failed: ${e.localizedMessage ?: e.javaClass.simpleName}"
             Result.retry()
         }
     }
